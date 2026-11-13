@@ -26,7 +26,7 @@ def seed():
  rows=demo_rows()
  repo.put('datasets',{'id':'ds-learning','name':'11月研修学习事件 · 900条','source':'learning_events_202611.csv','rows':rows,'created_at':now()},insert_only=True)
  repo.put('cohorts',{'id':'cohort-weekly','name':'按首次观测周入组 · 活跃口径','dataset_id':'ds-learning','observation_end':5,'include_completed':False,'created_at':now()},insert_only=True)
- repo.put('runs',{'id':'run-baseline','cohort_id':'cohort-weekly','status':'completed','result':analyze(rows),'error':'','created_at':now()},insert_only=True)
+ repo.put('runs',{'id':'run-baseline','cohort_id':'cohort-weekly','status':'completed','result':analyze(rows),'error':'','attempts':0,'error_code':'','created_at':now(),'finished_at':now()},insert_only=True)
  repo.put('reviews',{'id':'review-baseline','run_id':'run-baseline','comment':'模拟数据口径已核对，缺测分母与终态假设须随报告披露。','status':'approved','reviewer':'admin@zhixing.test','created_at':now()},insert_only=True)
  repo.put('reports',{'id':'report-baseline','run_id':'run-baseline','review_id':'review-baseline','title':'11月学员迁移复核档案','created_at':now()},insert_only=True)
  return {t:len(repo.all_rows(t)) for t in ('users','datasets','cohorts','runs','reviews','reports')}

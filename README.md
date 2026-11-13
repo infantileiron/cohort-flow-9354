@@ -43,6 +43,14 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 迁移：仅使用有相邻日历周观测的状态对估计计数及行归一概率，completed和lost为吸收态。Q为active/dormant子矩阵，N=(I-Q)^-1，期望到达终态前周数为N的行和（包含当前周），吸收概率为N×R。Q谱半径≥1时显式返回不可识别，不输出伪造的有限期望。模型假设齐次一阶迁移；模拟分布不能替代真实课程效果研究。
 
+## 任务恢复与幂等
+
+- 接收即冻结：`POST /runs` 时把事件行与队列定义写入该运行的 `input_events`/`input_cohort` 快照，之后计算、自动重试和手动重试都只读快照。重试期间修改数据集或队列定义不会改变已接收任务的结果。
+- 租约与 fencing：worker 接手时以行级比较交换写入 `worker_id`/`attempts`/`lease_expires_at`；完成、失败、回写状态都必须匹配当前 `worker_id`。旧进程恢复后写回会因失去所有权而被丢弃，不会覆盖新结果。
+- 自动恢复：每个 worker 每隔 `WORKER_RECOVERY_SECONDS` 回收租约过期或排队过久的运行并重新入队；重复投递由 claim 幂等吸收，结果只发布一次（产物文件原子替换）。
+- 重试与失败：计算异常自动重试至 `RUN_MAX_ATTEMPTS`；数据/定义错误（终态回退、同一学员同周序号冲突、未知状态等）立即结束任务且不再自动重试。结果页展示尝试次数、失败原因与错误码，并允许对非数据错误手动重试。
+- 新增环境变量：`RUN_LEASE_SECONDS`（默认90）、`RUN_MAX_ATTEMPTS`（默认3）、`WORKER_RECOVERY_SECONDS`（默认10）、`RUN_REDELIVER_SECONDS`（默认60）。
+
 ## 技术与结构
 
 | 层 | 技术 |
@@ -62,11 +70,13 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 ## 边界
 
-Redis列表使用阻塞弹出；worker进程被强杀时已出队任务无自动恢复，需要重新提交。未实现生产级任务重试、多人同时编辑的乐观锁、数据库迁移回滚。默认账号仅用于本地演示。CSV下载对公式前缀做保护。审计不记录密码和JWT。
+Redis列表使用阻塞弹出，但已接收任务的权威状态在数据库中；worker 被强杀后由租约过期自动恢复，无需重新提交。未实现多人同时编辑的乐观锁与数据库迁移回滚。默认账号仅用于本地演示。CSV下载对公式前缀做保护。审计不记录密码和JWT。
 
 ## 验收资料
 
 真实容器、HTTP、独立算法oracle及浏览器证据位于批次 `test-artifacts/gb-2201/`，不混入源码目录。
+
+可重复的恢复验收：`cd backend && python -m pytest tests -q` 覆盖中途退出、重复投递、并发接手、源数据变化、数据错误与重试上限；`python -m scripts.accept_run_recovery` 走 HTTP+worker 全链路（杀死计算进程后自动恢复），随后 `python -m scripts.oracle_retention` 用独立实现核对留存人数与迁移计数。
 
 ## License
 
